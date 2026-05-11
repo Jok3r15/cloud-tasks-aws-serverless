@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudTasks - AWS Serverless</title>
+    <!-- SDK de Cognito y Tailwind -->
+    <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.7/dist/amazon-cognito-identity.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .task-card { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .input-group { position: relative; }
+        .eye-icon { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 0.9rem; }
+        .eye-icon:hover { color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Selector de Idioma -->
+    <div class="fixed top-4 right-4 z-50">
+        <select id="langSelector" onchange="changeLanguage(this.value)" class="bg-white border border-slate-200 text-slate-600 text-xs font-bold py-2 px-3 rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+            <option value="es">🇪🇸 ES</option>
+            <option value="en">🇺🇸 EN</option>
+        </select>
+    </div>
+
+    <div class="max-w-md mx-auto pt-10 px-4">
+        
+        <!-- SECCIÓN DE AUTENTICACIÓN -->
+        <div id="authSection" class="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100">
+            <div class="text-center mb-8">
+                <div class="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
+                    <i class="fas fa-cloud text-white text-2xl"></i>
+                </div>
+                <h1 class="text-3xl font-extrabold text-slate-800 tracking-tight">CloudTasks</h1>
+                <p id="txt-subtitle" class="text-slate-400 text-sm mt-1">Gestión Segura en AWS</p>
+            </div>
+
+            <!-- TABS (Login / Registro) -->
+            <div id="authTabs" class="flex mb-6 bg-slate-100 p-1 rounded-xl">
+                <button onclick="toggleAuth('login')" id="btnLoginTab" class="flex-1 py-2 rounded-lg font-bold text-sm bg-white shadow-sm text-blue-600 transition-all">Login</button>
+                <button onclick="toggleAuth('signup')" id="btnSignupTab" class="flex-1 py-2 rounded-lg font-bold text-sm text-slate-500 transition-all">Registro</button>
+            </div>
+            
+            <!-- Formulario Login -->
+            <div id="loginForm" class="space-y-4">
+                <input type="email" id="email" placeholder="Email" class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                <div class="input-group">
+                    <input type="password" id="password" placeholder="Contraseña" class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                    <i class="fas fa-eye eye-icon" onclick="togglePass('password')"></i>
+                </div>
+                <div class="text-right">
+                    <button onclick="toggleAuth('forgot')" id="btn-forgot-link" class="text-xs text-blue-600 font-semibold hover:underline">¿Olvidaste tu contraseña?</button>
+                </div>
+                <button onclick="login()" id="btn-login-submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg">Entrar</button>
+            </div>
+
+            <!-- Formulario Registro -->
+            <div id="signupForm" class="hidden space-y-4">
+                <input type="email" id="regEmail" placeholder="Nuevo Email" class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                <div class="input-group">
+                    <input type="password" id="regPassword" placeholder="Crear Contraseña" class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                    <i class="fas fa-eye eye-icon" onclick="togglePass('regPassword')"></i>
+                </div>
+                <p id="txt-pass-req" class="text-[10px] text-slate-500 px-2 leading-relaxed">Mínimo 8 caracteres, use mayúsculas, números y símbolos.</p>
+                <button onclick="register()" id="btn-signup-submit" class="w-full bg-slate-800 hover:bg-black text-white font-bold py-3 rounded-xl transition-all shadow-lg">Registrarse</button>
+            </div>
+
+            <!-- Recuperar Contraseña Paso 1 -->
+            <div id="forgotForm" class="hidden space-y-4">
+                <h3 id="txt-reset-title" class="text-center font-bold text-slate-700">Restablecer Contraseña</h3>
+                <input type="email" id="forgotEmail" placeholder="Tu Email" class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                <button onclick="forgotPassword()" id="btn-send-code" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg">Enviar Código</button>
+                <button onclick="toggleAuth('login')" id="btn-back-login" class="w-full text-slate-400 text-xs font-bold py-2">Volver</button>
+            </div>
+
+            <!-- Recuperar Contraseña Paso 2 (Confirmación) -->
+            <div id="resetConfirmForm" class="hidden space-y-4">
+                <p id="txt-reset-msg" class="text-xs text-center text-blue-600 font-medium">Ingresa el código enviado a tu email.</p>
+                <input type="text" id="resetCode" placeholder="Código" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-xl font-bold tracking-widest outline-none focus:ring-2 focus:ring-blue-500">
+                <div class="input-group">
+                    <input type="password" id="newPassword" placeholder="Nueva Contraseña" class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+                    <i class="fas fa-eye eye-icon" onclick="togglePass('newPassword')"></i>
+                </div>
+                <button onclick="confirmNewPassword()" id="btn-confirm-reset" class="w-full bg-green-600 text-white font-bold py-3 rounded-xl shadow-lg">Cambiar Contraseña</button>
+            </div>
+
+            <!-- Confirmación de Registro (Código Verificación) -->
+            <div id="confirmForm" class="hidden space-y-4">
+                <p id="txt-confirm-msg" class="text-xs text-center text-green-600 font-medium">Revisa tu correo por el código.</p>
+                <input type="text" id="confirmCode" placeholder="000000" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-xl font-bold tracking-widest">
+                <button onclick="confirmCode()" id="btn-verify" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg">Verificar Cuenta</button>
+            </div>
+        </div>
+
+        <!-- SECCIÓN DE LA APLICACIÓN (Tareas) -->
+        <div id="appSection" class="hidden space-y-4 pb-10">
+            <div class="flex justify-between items-center bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                <h2 id="txt-dashboard-title" class="font-bold text-slate-800"><i class="fas fa-tasks text-blue-500 mr-2"></i>Mis Tareas</h2>
+                <button onclick="logout()" id="btn-logout" class="text-slate-400 hover:text-red-500 font-semibold text-sm transition-colors">Salir</button>
+            </div>
+
+            <div class="bg-white p-6 rounded-3xl shadow-lg border border-slate-100">
+                <div class="space-y-3">
+                    <input type="text" id="taskInput" placeholder="¿Qué quieres hacer?" class="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-400 transition-all">
+                    <div class="flex gap-2">
+                        <select id="typeInput" class="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none font-semibold text-slate-600 cursor-pointer">
+                            <option value="General" id="opt-gen">📝 General</option>
+                            <option value="Trabajo" id="opt-work">💼 Trabajo</option>
+                            <option value="Personal" id="opt-pers">🏠 Personal</option>
+                            <option value="Urgente" id="opt-urg">🔥 Urgente</option>
+                        </select>
+                        <button onclick="addTask()" class="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-all">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="taskList" class="space-y-3"></div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURACIÓN AWS (Asegúrate de que coincidan con tu Cognito)
+        const poolData = { UserPoolId: 'us-east-1_PfwfE10Aj', ClientId: '1kqe9l83km8cp2cniotdhh172m' };
+        const API_URL = 'https://m70li8tx74.execute-api.us-east-1.amazonaws.com/v1/tasks';
+        
+        let userPool, idToken, tempEmail;
+
+        const i18n = {
+            es: {
+                subtitle: "Gestión Segura en AWS", tabLogin: "Login", tabSignup: "Registro",
+                passReq: "Mínimo 8 caracteres, use mayúsculas, números y símbolos.",
+                loginBtn: "Entrar", signupBtn: "Registrarse", verifyBtn: "Verificar Cuenta",
+                confirmMsg: "Revisa tu correo por el código.", dashTitle: "Mis Tareas", logout: "Salir",
+                inputTask: "¿Qué quieres hacer?", phEmail: "Email", phPass: "Contraseña",
+                phRegEmail: "Nuevo Email", phRegPass: "Crear Contraseña",
+                optGen: "📝 General", optWork: "💼 Trabajo", optPers: "🏠 Personal", optUrg: "🔥 Urgente",
+                alertDel: "¿Borrar esta tarea?", errAuth: "Error de autenticación o base de datos.",
+                forgotLink: "¿Olvidaste tu contraseña?", resetTitle: "Restablecer Contraseña",
+                sendCode: "Enviar Código", backLogin: "Volver", resetMsg: "Ingresa el código enviado a tu email.",
+                phNewPass: "Nueva Contraseña", confirmReset: "Cambiar Contraseña", alertSent: "Código enviado a tu email",
+                alertSuccess: "Contraseña cambiada con éxito"
+            },
+            en: {
+                subtitle: "Secure AWS Management", tabLogin: "Login", tabSignup: "Sign Up",
+                passReq: "Min 8 characters, use uppercase, numbers & symbols.",
+                loginBtn: "Login", signupBtn: "Sign Up", verifyBtn: "Verify Account",
+                confirmMsg: "Check your email for the code.", dashTitle: "My Dashboard", logout: "Logout",
+                inputTask: "What needs to be done?", phEmail: "Email", phPass: "Password",
+                phRegEmail: "New Email", phRegPass: "Create Password",
+                optGen: "📝 General", optWork: "💼 Work", optPers: "🏠 Personal", optUrg: "🔥 Urgent",
+                alertDel: "Delete this task?", errAuth: "Authentication or database error.",
+                forgotLink: "Forgot your password?", resetTitle: "Reset Password",
+                sendCode: "Send Code", backLogin: "Back", resetMsg: "Enter the code sent to your email.",
+                phNewPass: "New Password", confirmReset: "Change Password", alertSent: "Code sent to your email",
+                alertSuccess: "Password changed successfully"
+            }
+        };
+
+        function togglePass(id) {
+            const el = document.getElementById(id);
+            const icon = el.nextElementSibling;
+            if (el.type === "password") {
+                el.type = "text";
+                icon.classList.replace("fa-eye", "fa-eye-slash");
+            } else {
+                el.type = "password";
+                icon.classList.replace("fa-eye-slash", "fa-eye");
+            }
+        }
+
+        function changeLanguage(lang) {
+            const t = i18n[lang];
+            document.getElementById('txt-subtitle').innerText = t.subtitle;
+            document.getElementById('txt-pass-req').innerText = t.passReq;
+            document.getElementById('btn-login-submit').innerText = t.loginBtn;
+            document.getElementById('btn-signup-submit').innerText = t.signupBtn;
+            document.getElementById('btn-verify').innerText = t.verifyBtn;
+            document.getElementById('txt-confirm-msg').innerText = t.confirmMsg;
+            document.getElementById('txt-dashboard-title').innerHTML = `<i class="fas fa-tasks text-blue-500 mr-2"></i> ${t.dashTitle}`;
+            document.getElementById('btn-logout').innerText = t.logout;
+            document.getElementById('btnLoginTab').innerText = t.tabLogin;
+            document.getElementById('btnSignupTab').innerText = t.tabSignup;
+            document.getElementById('email').placeholder = t.phEmail;
+            document.getElementById('password').placeholder = t.phPass;
+            document.getElementById('regEmail').placeholder = t.phRegEmail;
+            document.getElementById('regPassword').placeholder = t.phRegPass;
+            document.getElementById('taskInput').placeholder = t.inputTask;
+            document.getElementById('btn-forgot-link').innerText = t.forgotLink;
+            document.getElementById('txt-reset-title').innerText = t.resetTitle;
+            document.getElementById('btn-send-code').innerText = t.sendCode;
+            document.getElementById('btn-back-login').innerText = t.backLogin;
+            document.getElementById('txt-reset-msg').innerText = t.resetMsg;
+            document.getElementById('newPassword').placeholder = t.phNewPass;
+            document.getElementById('btn-confirm-reset').innerText = t.confirmReset;
+            document.getElementById('opt-gen').innerText = t.optGen;
+            document.getElementById('opt-work').innerText = t.optWork;
+            document.getElementById('opt-pers').innerText = t.optPers;
+            document.getElementById('opt-urg').innerText = t.optUrg;
+            localStorage.setItem('preferredLang', lang);
+        }
+
+        window.onload = () => {
+            userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
+            idToken = localStorage.getItem('idToken');
+            const savedLang = localStorage.getItem('preferredLang') || 'es';
+            document.getElementById('langSelector').value = savedLang;
+            changeLanguage(savedLang);
+            if (idToken) { showApp(); fetchTasks(); }
+        };
+
+        function toggleAuth(type) {
+            document.getElementById('loginForm').classList.toggle('hidden', type !== 'login');
+            document.getElementById('signupForm').classList.toggle('hidden', type !== 'signup');
+            document.getElementById('forgotForm').classList.toggle('hidden', type !== 'forgot');
+            document.getElementById('confirmForm').classList.add('hidden');
+            document.getElementById('resetConfirmForm').classList.add('hidden');
+            document.getElementById('authTabs').classList.toggle('hidden', type === 'forgot' || type === 'confirm');
+            if(type === 'login' || type === 'signup'){
+                document.getElementById('btnLoginTab').className = type === 'login' ? 'flex-1 py-2 rounded-lg font-bold text-sm bg-white shadow-sm text-blue-600' : 'flex-1 py-2 rounded-lg font-bold text-sm text-slate-500';
+                document.getElementById('btnSignupTab').className = type === 'signup' ? 'flex-1 py-2 rounded-lg font-bold text-sm bg-white shadow-sm text-blue-600' : 'flex-1 py-2 rounded-lg font-bold text-sm text-slate-500';
+            }
+        }
+
+        function forgotPassword() {
+            const email = document.getElementById('forgotEmail').value;
+            if(!email) return;
+            const cognitoUser = new AmazonCognitoIdentity.CognitoUser({ Username: email, Pool: userPool });
+            cognitoUser.forgotPassword({
+                onSuccess: (data) => console.log(data),
+                onFailure: (err) => alert(err.message),
+                inputVerificationCode: () => {
+                    const lang = document.getElementById('langSelector').value;
+                    alert(i18n[lang].alertSent);
+                    document.getElementById('forgotForm').classList.add('hidden');
+                    document.getElementById('resetConfirmForm').classList.remove('hidden');
+                }
+            });
+        }
+
+        function confirmNewPassword() {
+            const email = document.getElementById('forgotEmail').value;
+            const code = document.getElementById('resetCode').value;
+            const newPass = document.getElementById('newPassword').value;
+            const cognitoUser = new AmazonCognitoIdentity.CognitoUser({ Username: email, Pool: userPool });
+            cognitoUser.confirmPassword(code, newPass, {
+                onSuccess: () => {
+                    const lang = document.getElementById('langSelector').value;
+                    alert(i18n[lang].alertSuccess);
+                    toggleAuth('login');
+                },
+                onFailure: (err) => alert(err.message)
+            });
+        }
+
+        function register() {
+            tempEmail = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            const attrList = [new AmazonCognitoIdentity.CognitoUserAttribute({ Name: 'email', Value: tempEmail })];
+            userPool.signUp(tempEmail, password, attrList, null, (err) => {
+                if (err) { alert(err.message); return; }
+                document.getElementById('signupForm').classList.add('hidden');
+                document.getElementById('confirmForm').classList.remove('hidden');
+            });
+        }
+
+        function confirmCode() {
+            const code = document.getElementById('confirmCode').value;
+            const cognitoUser = new AmazonCognitoIdentity.CognitoUser({ Username: tempEmail, Pool: userPool });
+            cognitoUser.confirmRegistration(code, true, (err) => {
+                if (err) { alert(err.message); return; }
+                toggleAuth('login');
+            });
+        }
+
+        function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const authDetails = new AmazonCognitoIdentity.AuthenticationDetails({ Username: email, Password: password });
+            const cognitoUser = new AmazonCognitoIdentity.CognitoUser({ Username: email, Pool: userPool });
+            cognitoUser.authenticateUser(authDetails, {
+                onSuccess: (result) => {
+                    idToken = result.getIdToken().getJwtToken();
+                    localStorage.setItem('idToken', idToken);
+                    showApp(); fetchTasks();
+                },
+                onFailure: (err) => alert(err.message)
+            });
+        }
+
+        function showApp() { document.getElementById('authSection').classList.add('hidden'); document.getElementById('appSection').classList.remove('hidden'); }
+        function logout() { localStorage.removeItem('idToken'); location.reload(); }
+
+        async function fetchTasks() {
+            const list = document.getElementById('taskList');
+            try {
+                const res = await fetch(API_URL, { headers: { 'Authorization': idToken } });
+                const data = await res.json();
+                list.innerHTML = '';
+                (data.items || []).forEach(t => {
+                    let badge = t.type === 'Urgente' ? "bg-red-100 text-red-600" : t.type === 'Trabajo' ? "bg-blue-100 text-blue-600" : "bg-green-100 text-green-600";
+                    list.innerHTML += `<div class="task-card flex justify-between items-center p-4 bg-white rounded-2xl border shadow-sm"><div class="flex flex-col"><span class="text-[10px] font-extrabold uppercase ${badge} px-2 py-0.5 rounded-md w-fit mb-1">${t.type}</span><span class="text-slate-700 font-semibold">${t.title}</span></div><button onclick="deleteTask('${t.taskId}')" class="text-slate-300 hover:text-red-500 transition-colors p-2"><i class="fas fa-trash-alt"></i></button></div>`;
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function addTask() {
+            const input = document.getElementById('taskInput');
+            if (!input.value) return;
+            await fetch(API_URL, { method: 'POST', headers: { 'Authorization': idToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: input.value, type: document.getElementById('typeInput').value }) });
+            input.value = ''; fetchTasks();
+        }
+
+        async function deleteTask(taskId) {
+            const lang = document.getElementById('langSelector').value;
+            if(!confirm(i18n[lang].alertDel)) return;
+            try {
+                const res = await fetch(`${API_URL}/${taskId}`, { method: 'DELETE', headers: { 'Authorization': idToken } });
+                if (res.ok) fetchTasks();
+                else alert(i18n[lang].errAuth);
+            } catch (e) { console.error(e); }
+        }
+    </script>
+</body>
+</html>
